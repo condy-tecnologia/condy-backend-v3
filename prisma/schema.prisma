@@ -1,0 +1,163 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserType {
+  SINDICO_RESIDENTE
+  SINDICO_PROFISSIONAL
+  ADMIN_IMOVEIS
+  PRESTADOR
+  ADMIN_PLATAFORMA
+}
+
+enum RegimeTributario {
+  SIMPLES
+  LUCRO_PRESUMIDO
+  LUCRO_REAL
+}
+
+enum ChamadoStatus {
+  NOVO
+  EM_ATENDIMENTO
+  CONCLUIDO
+}
+
+enum Prioridade {
+  BAIXA
+  MEDIA
+  ALTA
+}
+
+enum Escopo {
+  ORCAMENTO
+  SERVICO_IMEDIATO
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  name            String
+  cpf_cnpj        String    @unique
+  whatsapp        String    @unique
+  email           String    @unique
+  password        String
+  user_type       UserType
+  data_nascimento DateTime?
+  email_pessoal   String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  // Campos específicos para síndicos
+  periodo_mandato_inicio DateTime?
+  periodo_mandato_fim    DateTime?
+  subsindico_info        Json?
+
+  // Campos específicos para empresas (Admin Imóveis/Prestadores)
+  nome_fantasia       String?
+  razao_social        String?
+  responsavel_empresa String?
+  cep                 String?
+  endereco            String?
+  cidade              String?
+  uf                  String?
+  segmentos_atuacao   String[]
+  regime_tributario   RegimeTributario?
+
+  // Relacionamentos
+  imoveis_gerenciados Imovel[]
+  chamados_criados    Chamado[] @relation("ChamadoCriador")
+  chamados_designados Chamado[] @relation("ChamadoProvider")
+
+  @@map("users")
+}
+
+model Imovel {
+  id                  Int              @id @default(autoincrement())
+  cnpj                String           @unique
+  nome_fantasia       String
+  razao_social        String
+  cep                 String
+  endereco            String
+  cidade              String
+  uf                  String           @db.VarChar(2)
+  regime_tributario   RegimeTributario @default(SIMPLES)
+  quantidade_moradias Int
+  areas_comuns        String[]
+  estatuto_url        String?
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+
+  // Relacionamentos
+  gestor_id Int
+  gestor    User      @relation(fields: [gestor_id], references: [id])
+  ativos    Ativo[]
+  chamados  Chamado[]
+
+  @@map("imoveis")
+}
+
+model Ativo {
+  id                         Int       @id @default(autoincrement())
+  asset_code                 String    @unique // Código único global (00001, 00002, etc.)
+  descricao_ativo            String
+  local_instalacao           String
+  marca                      String?
+  modelo                     String?
+  data_instalacao            DateTime?
+  valor_compra               Decimal?  @db.Decimal(10, 2)
+  garantia                   Boolean   @default(false)
+  garantia_validade          DateTime?
+  garantia_fornecedor_info   Json?
+  contrato_manutencao        Boolean   @default(false)
+  contrato_validade          DateTime?
+  contrato_fornecedor_info   Json?
+  relatorio_fotografico_urls String[]
+  created_at                 DateTime  @default(now())
+  updated_at                 DateTime  @updatedAt
+
+  // Relacionamentos
+  imovel_id Int
+  imovel    Imovel    @relation(fields: [imovel_id], references: [id], onDelete: Cascade)
+  chamados  Chamado[]
+
+  @@map("ativos")
+}
+
+model Chamado {
+  id                     Int           @id @default(autoincrement())
+  numero_chamado         String        @unique // CH2025XXXXXX
+  descricao_ocorrido     String
+  fotos_videos_urls      String[]
+  informacoes_adicionais String?
+  prioridade             Prioridade
+  escopo                 Escopo
+  status                 ChamadoStatus @default(NOVO)
+  created_at             DateTime      @default(now())
+  updated_at             DateTime      @updatedAt
+
+  // Relacionamentos
+  imovel_id Int
+  imovel    Imovel @relation(fields: [imovel_id], references: [id])
+
+  ativo_id Int?
+  ativo    Ativo? @relation(fields: [ativo_id], references: [id])
+
+  solicitante_id Int
+  solicitante    User @relation("ChamadoCriador", fields: [solicitante_id], references: [id])
+
+  assigned_provider_id Int?
+  assigned_provider    User? @relation("ChamadoProvider", fields: [assigned_provider_id], references: [id])
+
+  @@map("chamados")
+}
